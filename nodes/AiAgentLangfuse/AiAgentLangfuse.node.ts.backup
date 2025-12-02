@@ -1,0 +1,310 @@
+import type {
+	IExecuteFunctions,
+	ILoadOptionsFunctions,
+	INodeExecutionData,
+	INodeListSearchResult,
+	INodePropertyOptions,
+	INodeType,
+	INodeTypeDescription,
+	ICredentialDataDecryptedObject,
+	ResourceMapperField,
+	ResourceMapperFields,
+} from 'n8n-workflow';
+import { NodeOperationError } from 'n8n-workflow';
+import { propagateAttributes } from '@langfuse/tracing';
+import { CallbackHandler } from 'langfuse-langchain';
+import { getLangfuseClient } from '../../utils/langfuseClient';
+import { fetchAndCompilePrompt } from '../../utils/promptCompiler';
+import { ensureSessionId } from '../../utils/sessionManager';
+
+export class AiAgentLangfuse implements INodeType {
+	description: INodeTypeDescription = {
+		displayName: 'AI Agent Langfuse',
+		name: 'aiAgentLangfuse',
+		icon: 'file:AiAgentLangfuse.svg',
+		group: ['transform'],
+		version: 1,
+		description: 'AI Agent with built-in Langfuse prompt management and OTEL tracing',
+		defaults: {
+			name: 'AI Agent Langfuse',
+		},
+		inputs: ['main', 'ai_languageModel'],
+		outputs: ['main'],
+		credentials: [
+			{
+				name: 'openAiApiWithLangfuseApi',
+				required: true,
+			},
+		],
+		properties: [
+			{
+				displayName: 'Prompt Source',
+				name: 'promptSource',
+				type: 'options',
+				options: [
+					{
+						name: 'Fetch from Langfuse',
+						value: 'fetchFromLangfuse',
+					},
+					{
+						name: 'Define Below',
+						value: 'define',
+					},
+				],
+				default: 'fetchFromLangfuse',
+				description: 'Choose where to load the prompt from',
+			},
+			{
+				displayName: 'Prompt Name',
+				name: 'promptName',
+				type: 'string',
+				default: '',
+				required: true,
+				displayOptions: {
+					show: {
+						promptSource: ['fetchFromLangfuse'],
+					},
+				},
+				description: 'The name of the prompt in Langfuse',
+			},
+			{
+				displayName: 'Prompt Version',
+				name: 'promptVersion',
+				type: 'number',
+				default: undefined,
+				displayOptions: {
+					show: {
+						promptSource: ['fetchFromLangfuse'],
+					},
+				},
+				description: 'Specific version to fetch (leave empty for latest)',
+			},
+			{
+				displayName: 'Prompt Variables',
+				name: 'promptVariables',
+				type: 'fixedCollection',
+				typeOptions: {
+					multipleValues: true,
+				},
+				default: {},
+				displayOptions: {
+					show: {
+						promptSource: ['fetchFromLangfuse'],
+					},
+				},
+				options: [
+					{
+						name: 'values',
+						displayName: 'Variable',
+						values: [
+							{
+								displayName: 'Name',
+								name: 'name',
+								type: 'string',
+								default: '',
+								description: 'Variable name (e.g., userQuery)',
+							},
+							{
+								displayName: 'Value',
+								name: 'value',
+								type: 'string',
+								default: '',
+								description: 'Variable value (supports expressions)',
+							},
+						],
+					},
+				],
+				description: 'Variables to substitute in the prompt template',
+			},
+			{
+				displayName: 'Text',
+				name: 'text',
+				type: 'string',
+				typeOptions: {
+					rows: 4,
+				},
+				default: '',
+				displayOptions: {
+					show: {
+						promptSource: ['define'],
+					},
+				},
+				description: 'The input text for the agent',
+			},
+			{
+				displayName: 'Session ID',
+				name: 'sessionId',
+				type: 'string',
+				default: 'n8n-{{$execution.id}}',
+				description: 'Session ID for grouping traces (supports {{$execution.id}} placeholder)',
+			},
+			{
+				displayName: 'User ID',
+				name: 'userId',
+				type: 'string',
+				default: '',
+				description: 'Optional user ID for trace attribution',
+			},
+			{
+				displayName: 'Tags',
+				name: 'tags',
+				type: 'string',
+				default: '',
+				description: 'Comma-separated tags for categorization',
+			},
+			{
+				displayName: 'Additional Metadata (JSON)',
+				name: 'metadata',
+				type: 'json',
+				default: '{}',
+				description: 'Additional metadata to attach to traces',
+			},
+		],
+	};
+
+	async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
+		const items = this.getInputData();
+		const returnData: INodeExecutionData[] = [];
+
+		for (let itemIndex = 0; itemIndex < items.length; itemIndex++) {
+			try {
+				const credentials = (await this.getCredentials(
+					'openAiApiWithLangfuseApi',
+					itemIndex,
+				)) as ICredentialDataDecryptedObject;
+
+				const langfuseConfig = {
+					publicKey: credentials.langfusePublicKey as string,
+					secretKey: credentials.langfuseSecretKey as string,
+					baseUrl: credentials.langfuseBaseUrl as string,
+				};
+
+				const promptSource = this.getNodeParameter('promptSource', itemIndex) as string;
+				const sessionId = this.getNodeParameter('sessionId', itemIndex, '') as string;
+				const userId = this.getNodeParameter('userId', itemIndex, '') as string;
+				const tagsStr = this.getNodeParameter('tags', itemIndex, '') as string;
+				const metadataStr = this.getNodeParameter('metadata', itemIndex, '{}') as string;
+
+				const finalSessionId = ensureSessionId(
+					sessionId,
+					this.getExecutionId(),
+				);
+
+				const tags = tagsStr
+					? tagsStr.split(',').map((t) => t.trim()).filter(Boolean)
+					: [];
+
+				let metadata: Record<string, string> = {};
+				try {
+					metadata = JSON.parse(metadataStr);
+				} catch {
+					metadata = {};
+				}
+
+				let messages: Array<{ role: string; content: string }>;
+				let promptMetadata: { name: string; version: number } | undefined;
+
+				if (promptSource === 'fetchFromLangfuse') {
+					const promptName = this.getNodeParameter('promptName', itemIndex) as string;
+					const promptVersion = this.getNodeParameter('promptVersion', itemIndex, undefined) as number | undefined;
+					const promptVariablesRaw = this.getNodeParameter('promptVariables', itemIndex, { values: [] }) as {
+						values: Array<{ name: string; value: string }>;
+					};
+
+					const variables: Record<string, string> = {};
+					if (promptVariablesRaw.values) {
+						for (const v of promptVariablesRaw.values) {
+							variables[v.name] = v.value;
+						}
+					}
+
+					const compiled = await fetchAndCompilePrompt(
+						langfuseConfig,
+						promptName,
+						variables,
+						promptVersion,
+					);
+
+					messages = compiled.messages;
+					promptMetadata = compiled.promptMetadata;
+				} else {
+					const text = this.getNodeParameter('text', itemIndex) as string;
+					messages = [{ role: 'user', content: text }];
+				}
+
+				const langfuseClient = getLangfuseClient(langfuseConfig);
+				
+				const fetchedPrompt = promptMetadata
+					? await langfuseClient.getPrompt(promptMetadata.name, promptMetadata.version)
+					: undefined;
+
+				const callbackHandler = new CallbackHandler({
+					publicKey: langfuseConfig.publicKey,
+					secretKey: langfuseConfig.secretKey,
+					baseUrl: langfuseConfig.baseUrl,
+				});
+
+				const otelMetadata: Record<string, string> = {
+					...metadata,
+					'session.id': finalSessionId,
+					sessionId: finalSessionId,
+					...(userId && { 'user.id': userId, userId }),
+					...(promptMetadata && {
+						'langfuse.prompt.name': promptMetadata.name,
+						'langfuse.prompt.version': String(promptMetadata.version),
+						langfusePrompt: JSON.stringify(promptMetadata),
+					}),
+				};
+
+				const result = await propagateAttributes(
+					otelMetadata,
+					async () => {
+						const languageModel = (await this.getInputConnectionData(
+							'ai_languageModel',
+							0,
+						)) as {
+							invoke?: (input: { messages: Array<{ role: string; content: string }> }) => Promise<{ content: string }>;
+						};
+
+						if (!languageModel || !languageModel.invoke) {
+							throw new NodeOperationError(
+								this.getNode(),
+								'No language model connected. Please connect an AI Language Model node.',
+							);
+						}
+
+						const response = await languageModel.invoke({
+							messages,
+						});
+
+						return response;
+					},
+				);
+
+				await langfuseClient.flushAsync();
+
+				returnData.push({
+					json: {
+						output: result.content || result,
+						sessionId: finalSessionId,
+						...(promptMetadata && { prompt: promptMetadata }),
+					},
+					pairedItem: { item: itemIndex },
+				});
+			} catch (error) {
+				if (this.continueOnFail()) {
+					returnData.push({
+						json: {
+							error: error instanceof Error ? error.message : String(error),
+						},
+						pairedItem: { item: itemIndex },
+					});
+					continue;
+				}
+				throw error;
+			}
+		}
+
+		return [returnData];
+	}
+}
