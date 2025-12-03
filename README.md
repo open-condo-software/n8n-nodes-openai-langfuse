@@ -1,231 +1,160 @@
-# @copperiq/n8n-nodes-ai-langfuse
+# n8n-nodes-ai-langfuse
 
-> **Status:** Planning Phase  
-> **Package Name:** `@copperiq/n8n-nodes-ai-langfuse`  
-> **License:** MIT
+[![NPM Version](https://img.shields.io/npm/v/@copperiq/n8n-nodes-ai-langfuse)](https://www.npmjs.com/package/@copperiq/n8n-nodes-ai-langfuse)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Unified n8n community package providing AI Agent and OpenAI Chat Model nodes with full Langfuse v4 observability.
+This is an n8n community node that provides an OpenAI Language Model with built-in [Langfuse](https://langfuse.com/) observability and tracing.
 
-## Overview
+[n8n](https://n8n.io/) is a [fair-code licensed](https://docs.n8n.io/reference/license/) workflow automation platform.
 
-This package provides a simple, maintainable solution for using OpenAI models with Langfuse observability in n8n:
-
-- ✅ **OpenAI Chat Model with Langfuse Tracing**: Drop-in replacement for standard OpenAI Chat Model
-- ✅ **Works with n8n's V3 Agent**: Use with standard n8n AI Agent node for tool calling and reasoning
-- ✅ **Complete Observability**: Automatic capture of LLM calls, tool executions, and token usage
-- ✅ **Simple Architecture**: Langfuse tracing at LLM level via callbacks, not agent level
-- ✅ **Single Credential**: One credential for OpenAI + Langfuse
-
-## Why This Approach?
-
-### The Problem with Custom Agent Nodes
-
-Building a custom agent node means reimplementing complex logic:
-- Multi-turn conversation handling
-- Tool calling orchestration
-- Reasoning model support (o1/o3)
-- Streaming responses
-- Error handling and retries
-
-**Result**: Fragile, hard to maintain, and duplicates n8n's existing work.
-
-### The Simple Solution
-
-```
-✅ OpenAI Chat Model with Langfuse (This Package)
-   ↓ (ai_languageModel connection)
-✅ n8n AI Agent (Built-in V3 Node)
-   ↓ (tool connections)
-✅ Your Tools (n8n Tool Nodes)
-
-Benefits:
-- Langfuse tracing via LLM-level callbacks
-- Zero custom agent logic
-- Leverage n8n's proven V3 Agent
-- Simple, maintainable code
-- Complete observability (LLM + tools + tokens)
-```
+[Langfuse](https://langfuse.com/) is an open-source LLM engineering platform for tracing, evaluating, and monitoring AI applications.
 
 ## Features
 
-### OpenAI Chat Model with Langfuse Node
-- **Full OpenAI Compatibility**: All models (gpt-4o, o1, o3-mini, etc.)
-- **Automatic Langfuse Tracing**: LLM calls, tool executions, token usage
-- **Session Tracking**: Group traces by session ID
-- **User Identification**: Track which users are using your agents
-- **Tagging and Metadata**: Custom tags and metadata for filtering
-- **Reasoning Model Support**: Works with o1/o3 models and tool calling
-- **Drop-in Replacement**: Works exactly like standard OpenAI Chat Model node
-
-### How It Works
-1. **LLM Level Tracing**: Langfuse CallbackHandler attached to ChatOpenAI
-2. **Agent Orchestration**: n8n's V3 Agent handles tool calling and conversations
-3. **Complete Observability**: All interactions automatically traced
-4. **No Custom Logic**: Zero reimplementation of agent patterns
+- **OpenAI Language Model**: Full-featured OpenAI chat model with support for all latest models
+- **Built-in Langfuse Tracing**: Automatic observability for all LLM interactions
+- **Organized Traces**: Traces named as `WorkflowName - NodeName` with model-specific observation names
+- **Session Tracking**: Group related traces using session IDs
+- **Custom Metadata**: Add custom metadata and tags for filtering and organization
+- **Token Tracking**: Accurate token usage tracking including tool calls
+- **User Tracking**: Associate traces with specific users
 
 ## Installation
 
-```bash
-# Via npm
-npm install @copperiq/n8n-nodes-ai-langfuse
+Follow the [installation guide](https://docs.n8n.io/integrations/community-nodes/installation/) in the n8n community nodes documentation.
 
-# Via pnpm (recommended)
-pnpm add @copperiq/n8n-nodes-ai-langfuse
+### Using npm
+
+```bash
+npm install @copperiq/n8n-nodes-ai-langfuse
 ```
 
-## Quick Start
+### Using n8n's UI
 
-1. **Install the package** in your n8n instance
-2. **Create credential**: "OpenAI API with Langfuse"
-   - OpenAI API Key
-   - Langfuse Public Key
-   - Langfuse Secret Key
-   - Langfuse Base URL
-3. **Add nodes** to your workflow:
-   - "AI Agent Langfuse"
-   - "OpenAI Chat Model Langfuse"
-4. **Connect them**: AI Agent → OpenAI Chat Model
-5. **Configure agent**:
-   - Select prompt from Langfuse (dropdown)
-   - Fill in variables
-   - Session ID auto-generated
-6. **Run workflow** and check Langfuse for traces!
+1. Go to **Settings** > **Community Nodes**
+2. Select **Install**
+3. Enter `@copperiq/n8n-nodes-ai-langfuse` in the **Enter npm package name** field
+4. Agree to the [risks](https://docs.n8n.io/integrations/community-nodes/risks/) of using community nodes
+5. Select **Install**
+
+After installing the node, you can use it like any other node in your n8n workflows.
 
 ## Configuration
 
-### Agent Node
-```json
+### Prerequisites
+
+- An [OpenAI API key](https://platform.openai.com/api-keys)
+- A [Langfuse account](https://langfuse.com/) (cloud or self-hosted)
+- Langfuse public and secret keys from your project settings
+
+### Credentials Setup
+
+1. Create new credentials: **OpenAI API with Langfuse**
+2. Enter your **OpenAI API Key**
+3. Enter your **Langfuse Public Key**
+4. Enter your **Langfuse Secret Key**
+5. (Optional) Enter your **Langfuse Base URL** if using self-hosted Langfuse
+
+## Usage
+
+### Basic Setup
+
+1. Add the **OpenAI Language Model (Langfuse)** node to your workflow
+2. Select or create **OpenAI API with Langfuse** credentials
+3. Choose your desired model (e.g., `gpt-4o`, `gpt-4-turbo`, `gpt-3.5-turbo`)
+4. Configure any additional options (temperature, max tokens, etc.)
+
+### Langfuse Tracking
+
+The node includes optional Langfuse tracking fields for enhanced observability:
+
+- **Session ID**: Group related traces together (e.g., multi-turn conversations)
+- **User ID**: Associate traces with specific users
+- **Tags**: Add comma-separated tags for filtering (e.g., `production`, `customer-support`)
+- **Custom Metadata**: Add any additional context as JSON
+
+All fields support n8n expressions for dynamic values:
+
+```javascript
+// Example session ID from incoming data
+{{ $json.sessionId }}
+
+// Example user ID
+{{ $json.userId }}
+
+// Example tags
+production, api-call, {{ $json.department }}
+
+// Example metadata
 {
-  "promptSource": "fetchFromLangfuse",
-  "promptName": "my-agent-prompt",
-  "promptVersion": 1,
-  "variables": {
-    "userQuery": "{{$json.question}}",
-    "context": "{{$json.context}}"
-  },
-  "langfuseSettings": {
-    "sessionId": "n8n-{{$execution.id}}",
-    "userId": "user-123",
-    "tags": ["production", "customer-support"]
-  }
+  "customerTier": "{{ $json.tier }}",
+  "region": "{{ $json.region }}"
 }
 ```
 
-### LLM Node
-```json
-{
-  "model": "gpt-4o",
-  "useResponsesApi": true,
-  "builtInTools": {
-    "webSearch": {
-      "searchContextSize": "medium"
-    }
-  },
-  "options": {
-    "temperature": 0.7,
-    "reasoningEffort": "medium"
-  }
-}
-```
+### Trace Organization
 
-## Documentation
+Traces in Langfuse are automatically organized with:
 
-- **[Implementation Briefing](./IMPLEMENTATION-BRIEFING.md)**: Comprehensive technical design
-- **[API Reference](./docs/API.md)**: Detailed API documentation (coming soon)
-- **[Examples](./examples/)**: Sample workflows (coming soon)
+- **Trace Name**: `WorkflowName - NodeName` (e.g., `Customer Support - AI Assistant`)
+- **Observation Names**: Actual model name (e.g., `gpt-4o`)
+- **Trace ID**: Unique per workflow execution and node
+- **Metadata**: Includes execution ID and workflow name
 
-## Architecture
+## Examples
+
+### Simple Chat Completion
 
 ```
-@copperiq/n8n-nodes-ai-langfuse/
-├── credentials/
-│   ├── LangfuseApi.credentials.ts
-│   └── OpenAiApiWithLangfuseApi.credentials.ts
-├── nodes/
-│   ├── AiAgentLangfuse/         # Agent node
-│   └── LmChatOpenAiLangfuse/    # LLM node
-└── utils/
-    ├── langfuseClient.ts        # Shared Langfuse SDK
-    ├── otelSetup.ts             # OTEL initialization
-    ├── promptCompiler.ts        # Prompt fetching/compilation
-    └── sessionManager.ts        # Session ID generation
+1. Trigger (e.g., Webhook)
+2. OpenAI Language Model (Langfuse)
+   - Model: gpt-4o
+   - System Message: "You are a helpful assistant"
+   - User Message: {{ $json.userMessage }}
+3. Respond to Webhook
 ```
 
-## Requirements
+### Conversation with Session Tracking
 
-- **n8n**: v1.0.0 or higher
-- **Node.js**: v18 or higher
-- **Langfuse**: v4.x (cloud or self-hosted)
-
-## Development
-
-```bash
-# Clone repository
-git clone https://github.com/Copper-IQ/n8n-nodes-ai-langfuse.git
-cd n8n-nodes-ai-langfuse
-
-# Install dependencies
-pnpm install
-
-# Build
-pnpm run build
-
-# Link for local development
-pnpm link --global
-
-# In your n8n installation
-cd ~/.n8n
-pnpm link --global @copperiq/n8n-nodes-ai-langfuse
+```
+1. Webhook Trigger
+2. OpenAI Language Model (Langfuse)
+   - Model: gpt-4o
+   - Langfuse Tracking:
+     * Session ID: {{ $json.conversationId }}
+     * User ID: {{ $json.userId }}
+     * Tags: support, {{ $json.priority }}
+3. Store in Database
+4. Respond to Webhook
 ```
 
-## Contributing
+## Compatibility
 
-Contributions are welcome! Please read our [Contributing Guide](./CONTRIBUTING.md) first.
+- Requires n8n version 1.0.0 or above
+- Requires Node.js 18.0.0 or above
+- Compatible with all OpenAI models including latest GPT-4 and GPT-3.5 models
 
-## Roadmap
+## Resources
 
-### v1.0.0 (Current)
-- [x] AI Agent node with prompt selector
-- [x] OpenAI Chat Model node with OTEL
-- [x] Session tracking
-- [x] Token usage tracking
-- [x] Prompt linking
-
-### v1.1.0 (Future)
-- [ ] Anthropic support
-- [ ] Google Gemini support
-- [ ] Prompt caching
-- [ ] Multi-modal support (images, audio)
-
-### v2.0.0 (Future)
-- [ ] Advanced agent patterns (reflection, planning)
-- [ ] Human-in-the-loop workflows
-- [ ] Evaluation metrics UI
-
-## License
-
-MIT © Copper-IQ
+- [n8n community nodes documentation](https://docs.n8n.io/integrations/community-nodes/)
+- [Langfuse documentation](https://langfuse.com/docs)
+- [OpenAI API documentation](https://platform.openai.com/docs)
 
 ## Support
 
-- **Issues**: [GitHub Issues](https://github.com/Copper-IQ/n8n-nodes-ai-langfuse/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/Copper-IQ/n8n-nodes-ai-langfuse/discussions)
-- **Email**: support@copperiq.com
+For issues, questions, or feature requests, please visit:
+- GitHub Issues: [Copper-IQ/n8n-nodes-ai-langfuse](https://github.com/Copper-IQ/n8n-nodes-ai-langfuse/issues)
+- Email: support@copperiq.com
 
-## Credits
+## License
 
-Built on top of:
-- [n8n](https://n8n.io/) - Workflow automation
-- [LangChain](https://js.langchain.com/) - LLM framework
-- [Langfuse](https://langfuse.com/) - LLM observability
-- [OpenTelemetry](https://opentelemetry.io/) - Distributed tracing
+[MIT](LICENSE)
 
-## Related Projects
+## Version History
 
-- [n8n-nodes-langfuse](https://github.com/Copper-IQ/n8n-nodes-langfuse) - Original prompt selector node
-- [n8n-nodes-openai-langfuse](https://github.com/Copper-IQ/n8n-nodes-openai-langfuse) - Original LLM node with tracing
-- [n8n-nodes-ai-agent-langfuse](https://github.com/Copper-IQ/n8n-nodes-ai-agent-langfuse) - Original agent node with OTEL
-
----
-
-**Made with ❤️ by Copper-IQ**
+### 1.0.0
+- Initial release
+- OpenAI Language Model with Langfuse integration
+- Session tracking and custom metadata support
+- Automatic token usage tracking
+- Professional trace naming and organization

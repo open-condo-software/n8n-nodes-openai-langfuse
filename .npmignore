@@ -1,0 +1,42 @@
+# Source files
+nodes/
+credentials/
+utils/
+*.ts
+tsconfig.json
+jest.config.js
+gulpfile.js
+
+# Development files
+.idea/
+.vscode/
+.env
+.env.*
+*.log
+
+# Test files
+test/
+tests/
+**/*.test.ts
+**/*.spec.ts
+**/*.test.js
+**/*.spec.js
+
+# Documentation (keep README.md)
+docs/
+examples/
+*.md
+!README.md
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Build artifacts
+node_modules/
+*.backup
+
+# OS files
+.DS_Store
+Thumbs.db
