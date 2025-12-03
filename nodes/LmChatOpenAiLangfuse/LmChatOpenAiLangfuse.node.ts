@@ -247,15 +247,6 @@ export class LmChatOpenAiLangfuse implements INodeType {
 						placeholder: 'e.g. production, customer-support',
 					},
 					{
-						displayName: 'Release / Environment',
-						name: 'release',
-						type: 'string',
-						default: '',
-						description:
-							'Release or environment identifier (e.g., dev, staging, production, v1.2.3). Use expressions to include dynamic values.',
-						placeholder: 'e.g. production, staging, v1.2.3',
-					},
-					{
 						displayName: 'Custom Metadata',
 						name: 'metadata',
 						type: 'json',
@@ -691,15 +682,7 @@ export class LmChatOpenAiLangfuse implements INodeType {
 					.filter(Boolean);
 			}
 			
-			// Add release/environment to trace
-			// Note: 'version' field maps to 'Environment' in Langfuse UI
-			// 'release' is a separate field in Langfuse
-			if (langfuseTracking.release) {
-				traceOptions.version = langfuseTracking.release as string; // Maps to Environment dropdown
-				traceOptions.release = langfuseTracking.release as string; // Also set release for completeness
-			}
-			
-			// Create trace with custom ID, name, metadata, sessionId, userId, tags, version, and release
+			// Create trace with custom ID, name, metadata, sessionId, userId, and tags
 			const trace = langfuseClient.trace(traceOptions);
 			
 			// Pass trace as root to group all LLM calls under this trace
@@ -711,11 +694,6 @@ export class LmChatOpenAiLangfuse implements INodeType {
 				root: trace,
 				updateRoot: true, // Update trace with final input/output
 			};
-			
-			// Add version (environment) to callback handler for proper environment tracking
-			if (langfuseTracking.release) {
-				callbackOptions.version = langfuseTracking.release as string;
-			}
 
 			const langfuseCallback = new CustomLangfuseHandler(callbackOptions, generationName, traceName);
 
