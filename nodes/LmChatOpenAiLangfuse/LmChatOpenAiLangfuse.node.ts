@@ -1,7 +1,8 @@
 import { ChatOpenAI, type ChatOpenAIFields, type ClientOptions } from '@langchain/openai';
-import { CallbackHandler, Langfuse } from 'langfuse-langchain';
+import { Langfuse } from 'langfuse-langchain';
 import { BaseCallbackHandler } from '@langchain/core/callbacks/base';
 import type { LLMResult } from '@langchain/core/outputs';
+import { CustomLangfuseHandler } from './CustomLangfuseHandler';
 import pick from 'lodash/pick';
 import get from 'lodash/get';
 import {
@@ -663,8 +664,12 @@ export class LmChatOpenAiLangfuse implements INodeType {
 			});
 			
 			// Pass trace as root to group all LLM calls under this trace
+			// Use model name for generation observations (e.g., "gpt-5.1")
+			// while trace keeps the workflow-node format
+			const generationName = modelName;
 			const callbackOptions: any = {
 				root: trace,
+				updateRoot: true, // Update trace with final input/output
 			};
 
 			// Add optional Langfuse tracking fields
@@ -683,7 +688,7 @@ export class LmChatOpenAiLangfuse implements INodeType {
 					.filter(Boolean);
 			}
 
-			const langfuseCallback = new CallbackHandler(callbackOptions);
+			const langfuseCallback = new CustomLangfuseHandler(callbackOptions, generationName, traceName);
 
 			// CRITICAL: Wrap handleLLMEnd to transform estimatedTokenUsage to tokenUsage
 			const originalHandleLLMEnd = (langfuseCallback as any).handleLLMEnd?.bind(langfuseCallback);
