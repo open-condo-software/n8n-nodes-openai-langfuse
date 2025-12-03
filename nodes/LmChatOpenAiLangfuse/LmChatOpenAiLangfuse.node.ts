@@ -698,6 +698,7 @@ export class LmChatOpenAiLangfuse implements INodeType {
 			const langfuseCallback = new CustomLangfuseHandler(callbackOptions, generationName, traceName);
 
 			// CRITICAL: Wrap handleLLMEnd to transform estimatedTokenUsage to tokenUsage
+			// and capture structured outputs
 			const originalHandleLLMEnd = (langfuseCallback as any).handleLLMEnd?.bind(langfuseCallback);
 			if (originalHandleLLMEnd) {
 				(langfuseCallback as any).handleLLMEnd = async function (...args: any[]) {
@@ -743,7 +744,29 @@ export class LmChatOpenAiLangfuse implements INodeType {
 						};
 					}
 
-					return originalHandleLLMEnd(...args);
+					// Call the original handler
+					const result = await originalHandleLLMEnd(...args);
+
+					// CRITICAL: After the handler finishes, check for structured output and update trace
+					// When using structured outputs, OpenAI returns parsed JSON in message.parsed
+					const lastResponse =
+						output.generations?.[output.generations.length - 1]?.[
+							output.generations[output.generations.length - 1].length - 1
+						];
+					const parsedOutput = lastResponse?.message?.parsed;
+					
+					if (parsedOutput) {
+						// Structured output detected - manually update the trace
+						const traceId = (this as any).traceId;
+						if (traceId && (this as any).langfuse) {
+							(this as any).langfuse.trace({
+								id: traceId,
+								output: parsedOutput,
+							});
+						}
+					}
+
+					return result;
 				};
 			}
 
