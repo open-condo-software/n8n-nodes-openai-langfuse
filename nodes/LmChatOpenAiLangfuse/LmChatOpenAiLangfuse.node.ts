@@ -656,37 +656,44 @@ export class LmChatOpenAiLangfuse implements INodeType {
 				baseUrl: (credentials.langfuseBaseUrl as string) || 'https://cloud.langfuse.com',
 			});
 			
-			// Create trace with custom ID, name, and metadata
-			const trace = langfuseClient.trace({
+			// Prepare trace options with sessionId, userId, and tags for proper session tracking
+			const traceOptions: any = {
 				id: traceId,
 				name: traceName,
 				metadata,
-			});
+			};
+			
+			// Add sessionId to trace for session creation
+			if (langfuseTracking.sessionId) {
+				traceOptions.sessionId = langfuseTracking.sessionId as string;
+			}
+			
+			// Add userId to trace
+			if (langfuseTracking.userId) {
+				traceOptions.userId = langfuseTracking.userId as string;
+			}
+			
+			// Add tags to trace
+			if (langfuseTracking.tags) {
+				const tagsString = langfuseTracking.tags as string;
+				traceOptions.tags = tagsString
+					.split(',')
+					.map((tag) => tag.trim())
+					.filter(Boolean);
+			}
+			
+			// Create trace with custom ID, name, metadata, sessionId, userId, and tags
+			const trace = langfuseClient.trace(traceOptions);
 			
 			// Pass trace as root to group all LLM calls under this trace
 			// Use model name for generation observations (e.g., "gpt-5.1")
 			// while trace keeps the workflow-node format
+			// SessionId, userId, and tags are already set on the trace above
 			const generationName = modelName;
 			const callbackOptions: any = {
 				root: trace,
 				updateRoot: true, // Update trace with final input/output
 			};
-
-			// Add optional Langfuse tracking fields
-			if (langfuseTracking.sessionId) {
-				callbackOptions.sessionId = langfuseTracking.sessionId as string;
-			}
-			if (langfuseTracking.userId) {
-				callbackOptions.userId = langfuseTracking.userId as string;
-			}
-			if (langfuseTracking.tags) {
-				// Convert comma-separated string to array
-				const tagsString = langfuseTracking.tags as string;
-				callbackOptions.tags = tagsString
-					.split(',')
-					.map((tag) => tag.trim())
-					.filter(Boolean);
-			}
 
 			const langfuseCallback = new CustomLangfuseHandler(callbackOptions, generationName, traceName);
 
