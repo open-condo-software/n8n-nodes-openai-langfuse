@@ -45,7 +45,8 @@
       "dist/credentials/OpenAiApiWithLangfuseApi.credentials.js"
     ],
     "nodes": [
-      "dist/nodes/AiAgentLangfuse/AiAgentLangfuse.node.js"
+      "dist/nodes/AiAgentLangfuse/AiAgentLangfuse.node.js",
+      "dist/nodes/LmChatOpenAiLangfuse/LmChatOpenAiLangfuse.node.js"
     ]
   },
   "dependencies": {

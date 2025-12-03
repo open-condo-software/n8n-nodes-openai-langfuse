@@ -8,55 +8,60 @@ Unified n8n community package providing AI Agent and OpenAI Chat Model nodes wit
 
 ## Overview
 
-This package combines the best features of three existing Langfuse integration nodes into a single, cohesive solution:
+This package provides a simple, maintainable solution for using OpenAI models with Langfuse observability in n8n:
 
-- ✅ **AI Agent with built-in prompt management** (fetch from Langfuse)
-- ✅ **OpenAI Chat Model with automatic OTEL tracing**
-- ✅ **Single credential configuration** (no more mismatches)
-- ✅ **Full observability**: sessions, traces, token usage, prompt linking
-- ✅ **Better UX**: fewer nodes, simpler configuration
+- ✅ **OpenAI Chat Model with Langfuse Tracing**: Drop-in replacement for standard OpenAI Chat Model
+- ✅ **Works with n8n's V3 Agent**: Use with standard n8n AI Agent node for tool calling and reasoning
+- ✅ **Complete Observability**: Automatic capture of LLM calls, tool executions, and token usage
+- ✅ **Simple Architecture**: Langfuse tracing at LLM level via callbacks, not agent level
+- ✅ **Single Credential**: One credential for OpenAI + Langfuse
 
-## Why This Package?
+## Why This Approach?
 
-### Before (3 separate packages)
+### The Problem with Custom Agent Nodes
+
+Building a custom agent node means reimplementing complex logic:
+- Multi-turn conversation handling
+- Tool calling orchestration
+- Reasoning model support (o1/o3)
+- Streaming responses
+- Error handling and retries
+
+**Result**: Fragile, hard to maintain, and duplicates n8n's existing work.
+
+### The Simple Solution
+
 ```
-❌ n8n-nodes-ai-agent-langfuse (OTEL sessions)
-❌ n8n-nodes-langfuse (prompt selector)
-❌ n8n-nodes-openai-langfuse (LLM tracing)
-
-Problems:
-- Different credentials for each node
-- Complex configuration
-- Credential mismatches break features
-- Fragile connections
-```
-
-### After (1 unified package)
-```
-✅ @copperiq/n8n-nodes-ai-langfuse
+✅ OpenAI Chat Model with Langfuse (This Package)
+   ↓ (ai_languageModel connection)
+✅ n8n AI Agent (Built-in V3 Node)
+   ↓ (tool connections)
+✅ Your Tools (n8n Tool Nodes)
 
 Benefits:
-- 2 nodes, 1 credential
-- Built-in prompt management
-- Automatic session tracking
-- Complete observability
+- Langfuse tracing via LLM-level callbacks
+- Zero custom agent logic
+- Leverage n8n's proven V3 Agent
+- Simple, maintainable code
+- Complete observability (LLM + tools + tokens)
 ```
 
 ## Features
 
-### AI Agent Langfuse Node
-- **Prompt Selector**: Dropdown populated from Langfuse API
-- **Dynamic Variables**: UI auto-generates based on selected prompt
-- **OTEL Sessions**: Automatic session tracking with `propagateAttributes()`
-- **LangChain Integration**: Full support for tools, memory, output parsers
-- **Streaming**: Real-time output streaming
+### OpenAI Chat Model with Langfuse Node
+- **Full OpenAI Compatibility**: All models (gpt-4o, o1, o3-mini, etc.)
+- **Automatic Langfuse Tracing**: LLM calls, tool executions, token usage
+- **Session Tracking**: Group traces by session ID
+- **User Identification**: Track which users are using your agents
+- **Tagging and Metadata**: Custom tags and metadata for filtering
+- **Reasoning Model Support**: Works with o1/o3 models and tool calling
+- **Drop-in Replacement**: Works exactly like standard OpenAI Chat Model node
 
-### OpenAI Chat Model Langfuse Node
-- **OTEL Tracing**: Auto-initialized on first use (singleton pattern)
-- **Token Usage**: Captured via OpenTelemetry instrumentation
-- **Responses API**: Built-in tools (web search, code interpreter, file search)
-- **Metadata Inheritance**: Session ID from agent node
-- **Prompt Linking**: Automatic trace-to-prompt associations
+### How It Works
+1. **LLM Level Tracing**: Langfuse CallbackHandler attached to ChatOpenAI
+2. **Agent Orchestration**: n8n's V3 Agent handles tool calling and conversations
+3. **Complete Observability**: All interactions automatically traced
+4. **No Custom Logic**: Zero reimplementation of agent patterns
 
 ## Installation
 

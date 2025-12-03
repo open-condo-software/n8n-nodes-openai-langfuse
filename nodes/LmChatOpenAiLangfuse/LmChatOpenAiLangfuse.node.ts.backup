@@ -1,0 +1,290 @@
+import { ChatOpenAI, type ChatOpenAIFields, type ClientOptions } from '@langchain/openai';
+import { CallbackHandler } from 'langfuse-langchain';
+import pick from 'lodash/pick';
+import {
+	NodeConnectionTypes,
+	type INodeProperties,
+	type IDataObject,
+	type INodeType,
+	type INodeTypeDescription,
+	type ISupplyDataFunctions,
+	type SupplyData,
+	type ICredentialDataDecryptedObject,
+} from 'n8n-workflow';
+
+export class LmChatOpenAiLangfuse implements INodeType {
+	description: INodeTypeDescription = {
+		displayName: 'OpenAI Chat Model with Langfuse',
+		name: 'lmChatOpenAiLangfuse',
+		icon: 'file:openAiLight.svg',
+		group: ['transform'],
+		version: 1,
+		description: 'OpenAI Chat Model with Langfuse tracing for advanced usage with AI chains and agents',
+		defaults: {
+			name: 'OpenAI Chat Model with Langfuse',
+		},
+		codex: {
+			categories: ['AI'],
+			subcategories: {
+				AI: ['Language Models'],
+			},
+		},
+		inputs: [],
+		outputs: [NodeConnectionTypes.AiLanguageModel],
+		outputNames: ['Model'],
+		credentials: [
+			{
+				name: 'openAiApiWithLangfuseApi',
+				required: true,
+			},
+		],
+		properties: [
+			{
+				displayName: 'Model',
+				name: 'model',
+				type: 'string',
+				default: 'gpt-4o-mini',
+				description: 'The model to use for completion',
+			},
+			{
+				displayName: 'Session ID',
+				name: 'sessionId',
+				type: 'string',
+				default: '',
+				description: 'Langfuse session ID for grouping traces',
+			},
+			{
+				displayName: 'User ID',
+				name: 'userId',
+				type: 'string',
+				default: '',
+				description: 'User ID for Langfuse tracking',
+			},
+			{
+				displayName: 'Tags',
+				name: 'tags',
+				type: 'string',
+				default: '',
+				description: 'Comma-separated tags for Langfuse traces',
+			},
+			{
+				displayName: 'Metadata',
+				name: 'metadata',
+				type: 'json',
+				default: '{}',
+				description: 'Additional metadata for Langfuse traces',
+			},
+			{
+				displayName: 'Options',
+				name: 'options',
+				type: 'collection',
+				default: {},
+				placeholder: 'Add Option',
+				options: [
+					{
+						displayName: 'Base URL',
+						name: 'baseURL',
+						type: 'string',
+						default: 'https://api.openai.com/v1',
+						description: 'Override the default base URL',
+					},
+					{
+						displayName: 'Temperature',
+						name: 'temperature',
+						type: 'number',
+						default: 0.7,
+						typeOptions: {
+							minValue: 0,
+							maxValue: 2,
+							numberPrecision: 1,
+						},
+						description: 'Controls randomness in responses',
+					},
+					{
+						displayName: 'Maximum Tokens',
+						name: 'maxTokens',
+						type: 'number',
+						default: -1,
+						description: 'Maximum tokens to generate (-1 for no limit)',
+					},
+					{
+						displayName: 'Frequency Penalty',
+						name: 'frequencyPenalty',
+						type: 'number',
+						default: 0,
+						typeOptions: {
+							minValue: -2,
+							maxValue: 2,
+							numberPrecision: 1,
+						},
+					},
+					{
+						displayName: 'Presence Penalty',
+						name: 'presencePenalty',
+						type: 'number',
+						default: 0,
+						typeOptions: {
+							minValue: -2,
+							maxValue: 2,
+							numberPrecision: 1,
+						},
+					},
+					{
+						displayName: 'Top P',
+						name: 'topP',
+						type: 'number',
+						default: 1,
+						typeOptions: {
+							minValue: 0,
+							maxValue: 1,
+							numberPrecision: 1,
+						},
+					},
+					{
+						displayName: 'Timeout',
+						name: 'timeout',
+						type: 'number',
+						default: 60000,
+						description: 'Request timeout in milliseconds',
+					},
+					{
+						displayName: 'Max Retries',
+						name: 'maxRetries',
+						type: 'number',
+						default: 2,
+						description: 'Maximum number of retries',
+					},
+				],
+			},
+		],
+	};
+
+	async supplyData(this: ISupplyDataFunctions, itemIndex: number): Promise<SupplyData> {
+		const credentials = (await this.getCredentials(
+			'openAiApiWithLangfuseApi',
+		)) as ICredentialDataDecryptedObject;
+
+		const modelName = this.getNodeParameter('model', itemIndex, 'gpt-4o-mini') as string;
+		const sessionId = this.getNodeParameter('sessionId', itemIndex, '') as string;
+		const userId = this.getNodeParameter('userId', itemIndex, '') as string;
+		const tagsStr = this.getNodeParameter('tags', itemIndex, '') as string;
+		const metadataStr = this.getNodeParameter('metadata', itemIndex, '{}') as string;
+		const options = this.getNodeParameter('options', itemIndex, {}) as IDataObject;
+
+		// Parse tags
+		const tags = tagsStr ? tagsStr.split(',').map((t) => t.trim()).filter(Boolean) : [];
+
+		// Parse metadata
+		let metadata: Record<string, string> = {};
+		try {
+			metadata = JSON.parse(metadataStr);
+		} catch {
+			metadata = {};
+		}
+
+		// Add execution context to metadata
+		metadata.executionId = this.getExecutionId();
+		const workflowName = this.getWorkflow().name;
+		if (workflowName) {
+			metadata.workflowName = workflowName;
+		}
+
+		// Create Langfuse callback handler
+		const langfuseCallback = new CallbackHandler({
+			publicKey: credentials.langfusePublicKey as string,
+			secretKey: credentials.langfuseSecretKey as string,
+			baseUrl: credentials.langfuseBaseUrl as string,
+			sessionId: sessionId || undefined,
+			userId: userId || undefined,
+			tags: tags.length > 0 ? tags : undefined,
+			metadata,
+		});
+
+		// CRITICAL FIX: Wrap handleLLMEnd to transform estimatedTokenUsage to tokenUsage
+		// This is needed because langfuse-langchain expects tokenUsage but OpenAI sometimes returns estimatedTokenUsage
+		const originalHandleLLMEnd = (langfuseCallback as any).handleLLMEnd?.bind(langfuseCallback);
+		if (originalHandleLLMEnd) {
+			(langfuseCallback as any).handleLLMEnd = async function (...args: any[]) {
+				const output = args[0];
+				
+				// Try to get token usage from multiple sources
+				let tokenUsage = output?.llmOutput?.tokenUsage;
+				
+				// Fallback 1: estimatedTokenUsage (common with tool calls)
+				if (!tokenUsage && output?.llmOutput?.estimatedTokenUsage) {
+					tokenUsage = {
+						promptTokens: output.llmOutput.estimatedTokenUsage.promptTokens,
+						completionTokens: output.llmOutput.estimatedTokenUsage.completionTokens,
+						totalTokens: output.llmOutput.estimatedTokenUsage.totalTokens,
+					};
+				}
+				
+				// Fallback 2: usage_metadata (from message)
+				if (!tokenUsage) {
+					const lastResponse = output.generations?.[output.generations.length - 1]?.[output.generations[output.generations.length - 1].length - 1];
+					const usageMetadata = lastResponse?.message?.usage_metadata;
+					if (usageMetadata) {
+						tokenUsage = {
+							promptTokens: usageMetadata.input_tokens ?? usageMetadata.promptTokens ?? 0,
+							completionTokens: usageMetadata.output_tokens ?? usageMetadata.completionTokens ?? 0,
+							totalTokens: usageMetadata.total_tokens ?? usageMetadata.totalTokens ?? 0,
+						};
+					}
+				}
+				
+				// Ensure tokenUsage exists in llmOutput to prevent crashes
+				if (tokenUsage) {
+					args[0] = {
+						...output,
+						llmOutput: {
+							...output.llmOutput,
+							tokenUsage,
+						},
+					};
+				}
+				
+				return originalHandleLLMEnd(...args);
+			};
+		}
+
+		// Configure OpenAI client
+		const configuration: ClientOptions = {};
+		if (options.baseURL) {
+			configuration.baseURL = options.baseURL as string;
+		}
+
+		const includedOptions = pick(options, [
+			'frequencyPenalty',
+			'maxTokens',
+			'presencePenalty',
+			'temperature',
+			'topP',
+		]) as Record<string, number>;
+
+		const fields: ChatOpenAIFields = {
+			apiKey: credentials.apiKey as string,
+			model: modelName,
+			...(includedOptions as Partial<ChatOpenAIFields>),
+			timeout: (options.timeout as number) ?? 60000,
+			maxRetries: (options.maxRetries as number) ?? 2,
+			configuration,
+			callbacks: [langfuseCallback],
+		};
+
+		const model = new ChatOpenAI(fields);
+
+		// CRITICAL: Support built-in model tools (like web search for certain models)
+		// Some OpenAI models can have built-in tools that need to be accessible
+		// The agent will merge these with n8n tool nodes
+		if (options.builtInTools) {
+			if (!model.metadata) {
+				model.metadata = {};
+			}
+			model.metadata.tools = options.builtInTools;
+		}
+
+		return {
+			response: model,
+		};
+	}
+}
