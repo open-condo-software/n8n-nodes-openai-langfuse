@@ -247,6 +247,15 @@ export class LmChatOpenAiLangfuse implements INodeType {
 						placeholder: 'e.g. production, customer-support',
 					},
 					{
+						displayName: 'Release / Environment',
+						name: 'release',
+						type: 'string',
+						default: '',
+						description:
+							'Release or environment identifier (e.g., dev, staging, production, v1.2.3). Use expressions to include dynamic values.',
+						placeholder: 'e.g. production, staging, v1.2.3',
+					},
+					{
 						displayName: 'Custom Metadata',
 						name: 'metadata',
 						type: 'json',
@@ -682,7 +691,12 @@ export class LmChatOpenAiLangfuse implements INodeType {
 					.filter(Boolean);
 			}
 			
-			// Create trace with custom ID, name, metadata, sessionId, userId, and tags
+			// Add release/environment to trace
+			if (langfuseTracking.release) {
+				traceOptions.release = langfuseTracking.release as string;
+			}
+			
+			// Create trace with custom ID, name, metadata, sessionId, userId, tags, and release
 			const trace = langfuseClient.trace(traceOptions);
 			
 			// Pass trace as root to group all LLM calls under this trace
