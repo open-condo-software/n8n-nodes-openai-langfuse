@@ -744,26 +744,67 @@ export class LmChatOpenAiLangfuse implements INodeType {
 						};
 					}
 
-					// Call the original handler
-					const result = await originalHandleLLMEnd(...args);
-
-					// CRITICAL: After the handler finishes, check for structured output and update trace
-					// When using structured outputs, OpenAI returns parsed JSON in message.parsed
+					// Extract the response before calling the handler
 					const lastResponse =
 						output.generations?.[output.generations.length - 1]?.[
 							output.generations[output.generations.length - 1].length - 1
 						];
-					const parsedOutput = lastResponse?.message?.parsed;
-					
-					if (parsedOutput) {
-						// Structured output detected - manually update the trace
+
+					// CRITICAL: Log full response structure for debugging
+					console.log('[Langfuse Debug] Full lastResponse:', JSON.stringify({
+						text: lastResponse?.text,
+						messageType: lastResponse?.message?.constructor?.name,
+						messageContent: lastResponse?.message?.content,
+						messageAdditionalKwargs: lastResponse?.message?.additional_kwargs,
+						messageParsed: lastResponse?.message?.parsed,
+						messageToolCalls: lastResponse?.message?.tool_calls,
+						messageKeys: lastResponse?.message ? Object.keys(lastResponse.message) : [],
+					}, null, 2));
+
+					// Call the original handler
+					const result = await originalHandleLLMEnd(...args);
+
+					// CRITICAL: Check multiple sources for output content
+					let outputContent = null;
+
+					// Source 1: message.parsed (OpenAI native structured output)
+					if (lastResponse?.message?.parsed) {
+						outputContent = lastResponse.message.parsed;
+						console.log('[Langfuse Debug] Found output in message.parsed');
+					}
+
+					// Source 2: message.content (standard output)
+					if (!outputContent && lastResponse?.message?.content) {
+						outputContent = lastResponse.message.content;
+						console.log('[Langfuse Debug] Found output in message.content');
+					}
+
+					// Source 3: text field (fallback)
+					if (!outputContent && lastResponse?.text) {
+						outputContent = lastResponse.text;
+						console.log('[Langfuse Debug] Found output in text');
+					}
+
+					// Source 4: tool_calls (for function calling)
+					if (!outputContent && lastResponse?.message?.tool_calls) {
+						outputContent = { tool_calls: lastResponse.message.tool_calls };
+						console.log('[Langfuse Debug] Found output in tool_calls');
+					}
+
+					if (outputContent) {
+						// Update the trace with the extracted output
 						const traceId = (this as any).traceId;
 						if (traceId && (this as any).langfuse) {
+							console.log('[Langfuse Debug] Updating trace with output:', typeof outputContent, outputContent);
 							(this as any).langfuse.trace({
 								id: traceId,
-								output: parsedOutput,
+								output: outputContent,
 							});
+						} else {
+							console.log('[Langfuse Debug] Cannot update trace - missing traceId or langfuse client');
 						}
+					} else {
+						console.log('[Langfuse Debug] No output content found in any source');
 					}
 
 					return result;
