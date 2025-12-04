@@ -31,7 +31,7 @@ export class LmChatOpenAiLangfuse implements INodeType {
 		name: 'lmChatOpenAiLangfuse',
 		icon: 'file:openAiLight.svg',
 		group: ['transform'],
-		version: [1, 1.3],
+	version: [1, 1.3, 3],
 		description: 'OpenAI Chat Model with Langfuse tracing for advanced usage with AI chains and agents',
 		defaults: {
 			name: 'OpenAI Chat Model with Langfuse',
@@ -703,6 +703,18 @@ export class LmChatOpenAiLangfuse implements INodeType {
 			if (originalHandleLLMEnd) {
 				(langfuseCallback as any).handleLLMEnd = async function (...args: any[]) {
 					const output = args[0];
+
+					// CRITICAL: Log the full output structure to understand what we're getting
+					console.log('[Langfuse Debug] Full output object keys:', Object.keys(output));
+					const firstGen = output.generations?.[0]?.[0];
+					if (firstGen) {
+						console.log('[Langfuse Debug] First generation keys:', Object.keys(firstGen));
+						console.log('[Langfuse Debug] First generation full:', JSON.stringify(firstGen, null, 2));
+					}
+					if (output.llmOutput) {
+						console.log('[Langfuse Debug] Output.llmOutput keys:', Object.keys(output.llmOutput));
+						console.log('[Langfuse Debug] Output.llmOutput full:', JSON.stringify(output.llmOutput, null, 2));
+					}
 
 					// Try to get token usage from multiple sources
 					let tokenUsage = output?.llmOutput?.tokenUsage;
