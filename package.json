@@ -1,6 +1,6 @@
 {
-  "name": "@copperiq/n8n-nodes-ai-langfuse",
-  "version": "1.0.2",
+  "name": "@copperiq/n8n-nodes-llm-openai-langfuse",
+  "version": "1.0.3",
   "description": "n8n OpenAI Language Model with built-in Langfuse observability and tracing",
   "keywords": [
     "n8n-community-node-package",
@@ -14,14 +14,14 @@
     "monitoring"
   ],
   "license": "MIT",
-  "homepage": "https://github.com/Copper-IQ/n8n-nodes-ai-langfuse",
+  "homepage": "https://github.com/Copper-IQ/n8n-nodes-llm-openai-langfuse",
   "author": {
     "name": "Copper-IQ",
     "email": "support@copperiq.com"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Copper-IQ/n8n-nodes-ai-langfuse.git"
+    "url": "git+https://github.com/Copper-IQ/n8n-nodes-llm-openai-langfuse.git"
   },
   "main": "index.js",
   "scripts": {
