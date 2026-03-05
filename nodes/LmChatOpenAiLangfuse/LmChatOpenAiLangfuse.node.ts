@@ -18,6 +18,7 @@ import {
 import { formatBuiltInTools, prepareAdditionalResponsesParams } from './helpers/common';
 import { searchModels } from './methods/loadModels';
 import { N8nLlmTracing } from './N8nLlmTracing';
+import getProxyAgent from './helpers/httpProxyAgent'
 
 export class LmChatOpenAiLangfuse implements INodeType {
 	methods = {
@@ -597,6 +598,15 @@ export class LmChatOpenAiLangfuse implements INodeType {
 			configuration.baseURL = options.baseURL as string;
 		}
 
+		const timeout = (options.timeout as number) ?? 60000;
+
+		configuration.fetchOptions = {
+			dispatcher: getProxyAgent(configuration.baseURL ?? 'https://api.openai.com/v1', {
+				headersTimeout: timeout,
+				bodyTimeout: timeout,
+			}),
+		};
+
 		const includedOptions = pick(options, [
 			'frequencyPenalty',
 			'maxTokens',
@@ -837,7 +847,7 @@ export class LmChatOpenAiLangfuse implements INodeType {
 			apiKey: credentials.apiKey as string,
 			model: modelName,
 			...includedOptions,
-			timeout: (options.timeout as number) ?? 60000,
+			timeout,
 			maxRetries: (options.maxRetries as number) ?? 2,
 			configuration,
 			callbacks,
