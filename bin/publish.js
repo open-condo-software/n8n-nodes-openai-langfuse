@@ -10,7 +10,7 @@ const path = require('path')
 const builder = {
     name: '@mono-pub/local-builder',
     async prepareSingle({ targetPackage }) {
-        await execa('npm', ['build'], { cwd: path.dirname(targetPackage.location) })
+        await execa('npm', ['run', 'build'], { cwd: path.dirname(targetPackage.location) })
     }
 }
 
