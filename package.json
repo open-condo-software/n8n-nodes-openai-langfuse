@@ -1,6 +1,6 @@
 {
   "name": "@open-condo/n8n-nodes-llm-openai-langfuse",
-  "version": "1.0.3",
+  "version": "0.0.0-development",
   "description": "n8n OpenAI Language Model with built-in Langfuse observability and tracing",
   "keywords": [
     "n8n-community-node-package",
