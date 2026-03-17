@@ -21,13 +21,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Copper-IQ/n8n-nodes-llm-openai-langfuse.git"
+    "url": "git@github.com:open-condo-software/n8n-nodes-openai-langfuse.git"
   },
   "main": "index.js",
   "scripts": {
     "build": "tsc && gulp build:icons",
-    "dev": "tsc --watch",
-    "prepublishOnly": "npm run build"
+    "dev": "tsc --watch"
   },
   "publishConfig": {
     "access": "public"
