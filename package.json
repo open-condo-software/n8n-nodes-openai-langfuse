@@ -1,5 +1,5 @@
 {
-  "name": "@copperiq/n8n-nodes-llm-openai-langfuse",
+  "name": "@open-condo/n8n-nodes-llm-openai-langfuse",
   "version": "1.0.3",
   "description": "n8n OpenAI Language Model with built-in Langfuse observability and tracing",
   "keywords": [
@@ -29,6 +29,9 @@
     "dev": "tsc --watch",
     "prepublishOnly": "npm run build"
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "files": [
     "dist"
   ],
@@ -43,7 +46,7 @@
     ]
   },
   "dependencies": {
-    "@langchain/core": "0.3.68",
+    "@langchain/core": "0.3.80",
     "@langchain/openai": "0.6.16",
     "@langfuse/tracing": "^4.4.2",
     "@opentelemetry/api": "^1.9.0",
@@ -61,6 +64,10 @@
     "undici": "^7.22.0"
   },
   "devDependencies": {
+    "@mono-pub/commit-analyzer": "^1.0.10",
+    "@mono-pub/git": "^1.0.10",
+    "@mono-pub/github": "^1.0.10",
+    "@mono-pub/npm": "^1.1.0",
     "@types/jest": "^29.5.14",
     "@types/lodash": "^4.17.21",
     "@types/node": "^22.10.2",
@@ -68,8 +75,10 @@
     "dotenv": "^17.2.3",
     "eslint": "^9.17.0",
     "eslint-config-prettier": "^9.1.0",
+    "execa": "^5.1.1",
     "gulp": "^5.0.0",
     "jest": "^29.7.0",
+    "mono-pub": "^2.2.1",
     "prettier": "^3.4.2",
     "ts-jest": "^29.2.5",
     "tsx": "^4.21.0",
