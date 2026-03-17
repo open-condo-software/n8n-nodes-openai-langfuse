@@ -1,6 +1,6 @@
 # n8n-nodes-ai-langfuse
 
-[![NPM Version](https://img.shields.io/npm/v/@copperiq/n8n-nodes-ai-langfuse)](https://www.npmjs.com/package/@copperiq/n8n-nodes-ai-langfuse)
+[![NPM Version](https://img.shields.io/npm/v/@open-condo/n8n-nodes-llm-openai-langfuse)](https://www.npmjs.com/package/@open-condo/n8n-nodes-llm-openai-langfuse)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 This is an n8n community node that provides an OpenAI Language Model with built-in [Langfuse](https://langfuse.com/) observability and tracing.
