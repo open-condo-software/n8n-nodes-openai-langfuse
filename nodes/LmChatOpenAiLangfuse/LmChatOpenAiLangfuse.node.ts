@@ -1,13 +1,9 @@
 import { ChatOpenAI, type ChatOpenAIFields, type ClientOptions } from '@langchain/openai';
 import { Langfuse } from 'langfuse-langchain';
-import { BaseCallbackHandler } from '@langchain/core/callbacks/base';
-import type { LLMResult } from '@langchain/core/outputs';
 import { CustomLangfuseHandler } from './CustomLangfuseHandler';
 import pick from 'lodash/pick';
-import get from 'lodash/get';
 import {
 	NodeConnectionTypes,
-	type INodeProperties,
 	type IDataObject,
 	type INodeType,
 	type INodeTypeDescription,
@@ -772,14 +768,19 @@ export class LmChatOpenAiLangfuse implements INodeType {
 							output.generations[output.generations.length - 1].length - 1
 						];
 
+					const messageParsed = lastResponse?.message?.parsed
+					const messageContent = lastResponse?.message?.content
+					const text = lastResponse?.text
+					const messageToolCalls = lastResponse?.message?.tool_calls
+
 					// CRITICAL: Log full response structure for debugging
 					console.log('[Langfuse Debug] Full lastResponse:', JSON.stringify({
-						text: lastResponse?.text,
+						text,
 						messageType: lastResponse?.message?.constructor?.name,
-						messageContent: lastResponse?.message?.content,
+						messageContent,
 						messageAdditionalKwargs: lastResponse?.message?.additional_kwargs,
-						messageParsed: lastResponse?.message?.parsed,
-						messageToolCalls: lastResponse?.message?.tool_calls,
+						messageParsed,
+						messageToolCalls,
 						messageKeys: lastResponse?.message ? Object.keys(lastResponse.message) : [],
 					}, null, 2));
 
@@ -790,26 +791,26 @@ export class LmChatOpenAiLangfuse implements INodeType {
 					let outputContent = null;
 
 					// Source 1: message.parsed (OpenAI native structured output)
-					if (lastResponse?.message?.parsed) {
-						outputContent = lastResponse.message.parsed;
+					if (messageParsed) {
+						outputContent = messageParsed;
 						console.log('[Langfuse Debug] Found output in message.parsed');
 					}
 
 					// Source 2: message.content (standard output)
-					if (!outputContent && lastResponse?.message?.content) {
-						outputContent = lastResponse.message.content;
+					if (!outputContent && messageContent && (Array.isArray(messageContent) && messageContent.length > 0)) {
+						outputContent = messageContent;
 						console.log('[Langfuse Debug] Found output in message.content');
 					}
 
 					// Source 3: text field (fallback)
-					if (!outputContent && lastResponse?.text) {
-						outputContent = lastResponse.text;
+					if (!outputContent && text) {
+						outputContent = text;
 						console.log('[Langfuse Debug] Found output in text');
 					}
 
 					// Source 4: tool_calls (for function calling)
-					if (!outputContent && lastResponse?.message?.tool_calls) {
-						outputContent = { tool_calls: lastResponse.message.tool_calls };
+					if (!outputContent && messageToolCalls) {
+						outputContent = { tool_calls: messageToolCalls };
 						console.log('[Langfuse Debug] Found output in tool_calls');
 					}
 
