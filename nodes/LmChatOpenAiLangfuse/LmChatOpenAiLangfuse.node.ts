@@ -16,7 +16,6 @@ import { formatBuiltInTools, prepareAdditionalResponsesParams } from './helpers/
 import { searchModels } from './methods/loadModels';
 import { N8nLlmTracing } from './N8nLlmTracing';
 import getProxyAgent from './helpers/httpProxyAgent'
-import {createObservationAttributes} from "@langfuse/tracing";
 
 export class LmChatOpenAiLangfuse implements INodeType {
 	methods = {
