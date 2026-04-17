@@ -1,5 +1,6 @@
 import { ChatOpenAI, type ChatOpenAIFields, type ClientOptions } from '@langchain/openai';
-import { Langfuse } from 'langfuse-langchain';
+import Langfuse, {LangfuseOptions} from 'langfuse';
+import LangfuseCore from 'langfuse-core';
 import { CustomLangfuseHandler } from './CustomLangfuseHandler';
 import pick from 'lodash/pick';
 import {
@@ -15,6 +16,7 @@ import { formatBuiltInTools, prepareAdditionalResponsesParams } from './helpers/
 import { searchModels } from './methods/loadModels';
 import { N8nLlmTracing } from './N8nLlmTracing';
 import getProxyAgent from './helpers/httpProxyAgent'
+import {createObservationAttributes} from "@langfuse/tracing";
 
 export class LmChatOpenAiLangfuse implements INodeType {
 	methods = {
@@ -217,15 +219,6 @@ export class LmChatOpenAiLangfuse implements INodeType {
 				description: 'Optional fields for enhanced Langfuse observability',
 				options: [
 					{
-						displayName: 'Parent Span ID',
-						name: 'parentSpanId',
-						type: 'string',
-						default: '',
-						description:
-							'Parent span/observation ID to link this trace as a child of an existing span from your application. Use expressions to include dynamic values.',
-						placeholder: 'e.g. {{ $json.parentSpanId }}',
-					},
-					{
 						displayName: 'Session ID',
 						name: 'sessionId',
 						type: 'string',
@@ -251,6 +244,15 @@ export class LmChatOpenAiLangfuse implements INodeType {
 						description:
 							'Comma-separated tags for categorizing traces. Use expressions to include dynamic values.',
 						placeholder: 'e.g. production, customer-support',
+					},
+					{
+						displayName: 'Parent Span ID',
+						name: 'parentSpanId',
+						type: 'string',
+						default: '',
+						description:
+							'Parent span/observation ID to link this trace as a child of an existing span from your application. Use expressions to include dynamic values.',
+						placeholder: 'e.g. {{ $json.parentSpanId }}',
 					},
 					{
 						displayName: 'Custom Metadata',
@@ -665,23 +667,33 @@ export class LmChatOpenAiLangfuse implements INodeType {
 			const traceName = workflowName ? `${workflowName} - ${nodeName}` : nodeName;
 			
 			// Create Langfuse client and trace
-			const langfuseClient = new Langfuse({
+			const langfuseConfig: {
+				publicKey?: string;
+				secretKey?: string;
+			} & LangfuseOptions = {
 				publicKey: credentials.langfusePublicKey as string,
 				secretKey: credentials.langfuseSecretKey as string,
 				baseUrl: (credentials.langfuseBaseUrl as string) || 'https://cloud.langfuse.com',
-				...(credentials.langfuseEnvironment ? { environment: credentials.langfuseEnvironment as string } : {}),
-			});
+			}
+
+			if (credentials.langfuseEnvironment) {
+				langfuseConfig.environment = credentials.langfuseEnvironment as string
+			} else {
+				console.warn('Failed to get langfuse environment')
+			}
+
+			const langfuseClient = new Langfuse(langfuseConfig)
 			
 			// Prepare trace options with sessionId, userId, and tags for proper session tracking
-			const traceOptions: any = {
+			const traceOptions: LangfuseCore.CreateLangfuseTraceBody = {
 				id: traceId,
 				name: traceName,
 				metadata,
 			};
 
-			// Add parent span ID to link this trace as a child of an existing span
-			if (langfuseTracking.parentSpanId) {
-				traceOptions.parentObservationId = langfuseTracking.parentSpanId as string;
+			// Also add environment to trace
+			if (langfuseConfig.environment) {
+				traceOptions.environment = langfuseConfig.environment as string
 			}
 
 			// Add sessionId to trace for session creation
@@ -702,8 +714,8 @@ export class LmChatOpenAiLangfuse implements INodeType {
 					.map((tag) => tag.trim())
 					.filter(Boolean);
 			}
-			
-			// Create trace with custom ID, name, metadata, parentObservationId, sessionId, userId, and tags
+
+			// Create trace with custom ID, name, metadata, sessionId, userId, and tags
 			const trace = langfuseClient.trace(traceOptions);
 			
 			// Pass trace as root to group all LLM calls under this trace
@@ -715,6 +727,11 @@ export class LmChatOpenAiLangfuse implements INodeType {
 				root: trace,
 				updateRoot: true, // Update trace with final input/output
 			};
+
+			// Add parentId if parentSpanId is set to link observations to parent observation
+			if (langfuseTracking.parentSpanId) {
+				callbackOptions.parentId = langfuseTracking.parentSpanId as string;
+			}
 
 			const langfuseCallback = new CustomLangfuseHandler(callbackOptions, generationName, traceName);
 
