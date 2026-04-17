@@ -669,6 +669,7 @@ export class LmChatOpenAiLangfuse implements INodeType {
 				publicKey: credentials.langfusePublicKey as string,
 				secretKey: credentials.langfuseSecretKey as string,
 				baseUrl: (credentials.langfuseBaseUrl as string) || 'https://cloud.langfuse.com',
+				...(credentials.langfuseEnvironment ? { environment: credentials.langfuseEnvironment as string } : {}),
 			});
 			
 			// Prepare trace options with sessionId, userId, and tags for proper session tracking

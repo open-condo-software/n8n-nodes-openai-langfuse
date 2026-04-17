@@ -26,6 +26,7 @@ export async function fetchPromptFromLangfuse(
 		publicKey: string;
 		secretKey: string;
 		baseUrl: string;
+		environment?: string;
 	},
 	promptName: string,
 	version?: number,
@@ -75,6 +76,7 @@ export async function fetchAndCompilePrompt(
 		publicKey: string;
 		secretKey: string;
 		baseUrl: string;
+		environment?: string;
 	},
 	promptName: string,
 	variables: Record<string, string>,

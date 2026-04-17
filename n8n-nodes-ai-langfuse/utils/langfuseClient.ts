@@ -4,6 +4,7 @@ interface LangfuseConfig {
 	publicKey: string;
 	secretKey: string;
 	baseUrl: string;
+	environment?: string;
 }
 
 class LangfuseClientManager {
@@ -20,14 +21,18 @@ class LangfuseClientManager {
 	}
 
 	public getClient(config: LangfuseConfig): Langfuse {
-		const key = `${config.baseUrl}:${config.publicKey}`;
+		const key = `${config.baseUrl}:${config.publicKey}:${config.environment || ''}`;
 		
 		if (!this.clients.has(key)) {
-			const client = new Langfuse({
+			const clientConfig: any = {
 				publicKey: config.publicKey,
 				secretKey: config.secretKey,
 				baseUrl: config.baseUrl,
-			});
+			};
+			if (config.environment) {
+				clientConfig.environment = config.environment;
+			}
+			const client = new Langfuse(clientConfig);
 			this.clients.set(key, client);
 		}
 
