@@ -217,6 +217,15 @@ export class LmChatOpenAiLangfuse implements INodeType {
 				description: 'Optional fields for enhanced Langfuse observability',
 				options: [
 					{
+						displayName: 'Parent Span ID',
+						name: 'parentSpanId',
+						type: 'string',
+						default: '',
+						description:
+							'Parent span/observation ID to link this trace as a child of an existing span from your application. Use expressions to include dynamic values.',
+						placeholder: 'e.g. {{ $json.parentSpanId }}',
+					},
+					{
 						displayName: 'Session ID',
 						name: 'sessionId',
 						type: 'string',
@@ -668,17 +677,22 @@ export class LmChatOpenAiLangfuse implements INodeType {
 				name: traceName,
 				metadata,
 			};
-			
+
+			// Add parent span ID to link this trace as a child of an existing span
+			if (langfuseTracking.parentSpanId) {
+				traceOptions.parentObservationId = langfuseTracking.parentSpanId as string;
+			}
+
 			// Add sessionId to trace for session creation
 			if (langfuseTracking.sessionId) {
 				traceOptions.sessionId = langfuseTracking.sessionId as string;
 			}
-			
+
 			// Add userId to trace
 			if (langfuseTracking.userId) {
 				traceOptions.userId = langfuseTracking.userId as string;
 			}
-			
+
 			// Add tags to trace
 			if (langfuseTracking.tags) {
 				const tagsString = langfuseTracking.tags as string;
@@ -688,7 +702,7 @@ export class LmChatOpenAiLangfuse implements INodeType {
 					.filter(Boolean);
 			}
 			
-			// Create trace with custom ID, name, metadata, sessionId, userId, and tags
+			// Create trace with custom ID, name, metadata, parentObservationId, sessionId, userId, and tags
 			const trace = langfuseClient.trace(traceOptions);
 			
 			// Pass trace as root to group all LLM calls under this trace
