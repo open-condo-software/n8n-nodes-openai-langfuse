@@ -37,6 +37,13 @@ export class LangfuseApi implements ICredentialType {
 			required: true,
 			description: 'The base URL of your Langfuse instance (e.g., https://cloud.langfuse.com or your self-hosted URL)',
 		},
+		{
+			displayName: 'Environment',
+			name: 'environment',
+			type: 'string',
+			default: '',
+			description: 'The environment for Langfuse (e.g., production, staging, development)',
+		},
 	];
 
 	authenticate: IAuthenticateGeneric = {

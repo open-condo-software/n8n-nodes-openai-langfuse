@@ -48,6 +48,13 @@ export class OpenAiApiWithLangfuseApi implements ICredentialType {
 			required: true,
 			description: 'The base URL of your Langfuse instance',
 		},
+		{
+			displayName: 'Langfuse Environment',
+			name: 'langfuseEnvironment',
+			type: 'string',
+			default: '',
+			description: 'The environment for Langfuse (e.g., production, staging, development)',
+		},
 	];
 
 	authenticate: IAuthenticateGeneric = {
