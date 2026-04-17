@@ -727,6 +727,11 @@ export class LmChatOpenAiLangfuse implements INodeType {
 				updateRoot: true, // Update trace with final input/output
 			};
 
+			// Add environment if set
+			if (langfuseConfig.environment) {
+				callbackOptions.environment = langfuseConfig.environment;
+			}
+
 			// Add parentId if parentSpanId is set to link observations to parent observation
 			if (langfuseTracking.parentSpanId) {
 				callbackOptions.parentId = langfuseTracking.parentSpanId as string;
