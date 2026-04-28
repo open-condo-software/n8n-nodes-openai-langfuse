@@ -254,6 +254,15 @@ export class LmChatOpenAiLangfuse implements INodeType {
 						placeholder: 'e.g. {{ $json.parentSpanId }}',
 					},
 					{
+						displayName: 'Trace ID',
+						name: 'traceId',
+						type: 'string',
+						default: '',
+						description:
+							'Existing trace ID for distributed tracing. When set, this node appends observations to that trace instead of creating an n8n-specific trace ID.',
+						placeholder: 'e.g. {{ $json.traceId }}',
+					},
+					{
 						displayName: 'Custom Metadata',
 						name: 'metadata',
 						type: 'json',
@@ -657,12 +666,13 @@ export class LmChatOpenAiLangfuse implements INodeType {
 			}
 
 			// Build CallbackHandler options
-			// Create unique trace ID per agent node to avoid conflicts when multiple agents exist in workflow
+			// Prefer external trace ID for distributed tracing across services.
+			// Fallback to unique trace ID per agent node to avoid conflicts when multiple agents exist in workflow.
 			const executionId = this.getExecutionId();
 			const nodeId = this.getNode().id;
 			const nodeName = this.getNode().name;
-			// Use format: executionId-nodeId to make it unique per agent in the workflow execution
-			const traceId = `${executionId}-${nodeId}`;
+			const externalTraceId = (langfuseTracking.traceId as string | undefined)?.trim();
+			const traceId = externalTraceId || `${executionId}-${nodeId}`;
 			const traceName = workflowName ? `${workflowName} - ${nodeName}` : nodeName;
 			
 			// Create Langfuse client and trace

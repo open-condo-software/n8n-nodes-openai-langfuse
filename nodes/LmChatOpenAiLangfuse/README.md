@@ -76,6 +76,8 @@ Connect the output of this node to the `Model` input of an "AI Agent" node. The 
 - **Session ID**: Group traces by session for conversation flows
 - **User ID**: Track which users are using your AI agents
 - **Tags**: Comma-separated tags for filtering traces (e.g., `production,agent-v2`)
+- **Parent Span ID**: Link this node's observations under an existing parent observation
+- **Trace ID**: Continue an existing distributed trace across your app/test runner and n8n
 - **Metadata**: JSON object with custom metadata (e.g., `{"environment":"production","version":"1.0"}`)
 
 ### OpenAI Options
