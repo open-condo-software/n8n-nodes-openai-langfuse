@@ -11,11 +11,13 @@ import { type LLMResult } from '@langchain/core/outputs'
 export class CustomLangfuseHandler extends CallbackHandler {
 	private customName: string;
 	private originalTraceName?: string;
+	private environment?: string;
 
 	constructor(params: any, customName: string, traceName?: string) {
 		super(params);
 		this.customName = customName;
 		this.originalTraceName = traceName;
+		this.environment = params?.environment;
 
 		(this as any).extractChatMessageContent = (message: BaseMessage): LlmMessage | AnonymousLlmMessage | MessageContent => {
 			let response = undefined;
@@ -180,6 +182,7 @@ export class CustomLangfuseHandler extends CallbackHandler {
 					userId: this.userId,
 					version: this.version,
 					sessionId: this.sessionId,
+					environment: this.environment,
 					input: input,
 					tags: this.tags,
 				};
@@ -199,6 +202,7 @@ export class CustomLangfuseHandler extends CallbackHandler {
 				userId: this.userId,
 				version: this.version,
 				sessionId: this.sessionId,
+				environment: this.environment,
 				input: input,
 				tags: this.tags,
 			};
