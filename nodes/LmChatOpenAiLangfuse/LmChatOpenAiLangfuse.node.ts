@@ -1,5 +1,5 @@
 import { ChatOpenAI, type ChatOpenAIFields, type ClientOptions } from '@langchain/openai';
-import Langfuse, {LangfuseOptions} from 'langfuse';
+import Langfuse, { type LangfuseOptions, type LangfuseSpanClient, type LangfuseTraceClient } from 'langfuse';
 import LangfuseCore from 'langfuse-core';
 import { CustomLangfuseHandler } from './CustomLangfuseHandler';
 import pick from 'lodash/pick';
@@ -726,25 +726,36 @@ export class LmChatOpenAiLangfuse implements INodeType {
 
 			// Create trace with custom ID, name, metadata, sessionId, userId, and tags
 			const trace = langfuseClient.trace(traceOptions);
-			
-			// Pass trace as root to group all LLM calls under this trace
-			// Use model name for generation observations (e.g., "gpt-5.1")
-			// while trace keeps the workflow-node format
-			// SessionId, userId, and tags are already set on the trace above
-			const generationName = modelName;
-			const callbackOptions: any = {
-				root: trace,
-				updateRoot: true, // Update trace with final input/output
-			};
 
-			// Add environment if set
-			if (langfuseConfig.environment) {
-				callbackOptions.environment = langfuseConfig.environment;
+			const parentSpanId = (langfuseTracking.parentSpanId as string | undefined)?.trim();
+
+			// When parentSpanId is set, create a child span under the external parent observation
+			// and pass it as root so CallbackHandler nests all LLM calls correctly.
+			let root: LangfuseTraceClient | LangfuseSpanClient = trace;
+			if (parentSpanId) {
+				root = langfuseClient.span({
+					traceId,
+					parentObservationId: parentSpanId,
+					name: traceName,
+					metadata,
+					...(langfuseConfig.environment
+						? { environment: langfuseConfig.environment as string }
+						: {}),
+				});
 			}
 
-			// Add parentId if parentSpanId is set to link observations to parent observation
-			if (langfuseTracking.parentSpanId) {
-				callbackOptions.parentId = langfuseTracking.parentSpanId as string;
+			const generationName = modelName;
+			const callbackOptions: {
+				root: LangfuseTraceClient | LangfuseSpanClient;
+				updateRoot: boolean;
+				environment?: string;
+			} = {
+				root,
+				updateRoot: true,
+			};
+
+			if (langfuseConfig.environment) {
+				callbackOptions.environment = langfuseConfig.environment as string;
 			}
 
 			const langfuseCallback = new CustomLangfuseHandler(callbackOptions, generationName, traceName);
