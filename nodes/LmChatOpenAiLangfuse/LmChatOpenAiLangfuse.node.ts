@@ -724,19 +724,25 @@ export class LmChatOpenAiLangfuse implements INodeType {
 					.filter(Boolean);
 			}
 
-			// Create trace with custom ID, name, metadata, sessionId, userId, and tags
-			const trace = langfuseClient.trace(traceOptions);
-
 			const parentSpanId = (langfuseTracking.parentSpanId as string | undefined)?.trim();
+			const isDistributedTracing = Boolean(externalTraceId);
 
-			// When parentSpanId is set, create a child span under the external parent observation
-			// and pass it as root so CallbackHandler nests all LLM calls correctly.
+			// In distributed tracing mode only ensure the trace exists — do not overwrite
+			// name, input/output, session, or tags set by the calling application (e.g. OTEL).
+			const trace = isDistributedTracing
+				? langfuseClient.trace({ id: traceId })
+				: langfuseClient.trace(traceOptions);
+
+			const generationName = modelName;
+
+			// Nest LLM generations under the external parent span when provided.
+			// Use the model name for the wrapper span, not the workflow trace name.
 			let root: LangfuseTraceClient | LangfuseSpanClient = trace;
 			if (parentSpanId) {
 				root = langfuseClient.span({
 					traceId,
 					parentObservationId: parentSpanId,
-					name: traceName,
+					name: generationName,
 					metadata,
 					...(langfuseConfig.environment
 						? { environment: langfuseConfig.environment as string }
@@ -744,14 +750,14 @@ export class LmChatOpenAiLangfuse implements INodeType {
 				});
 			}
 
-			const generationName = modelName;
 			const callbackOptions: {
 				root: LangfuseTraceClient | LangfuseSpanClient;
 				updateRoot: boolean;
 				environment?: string;
 			} = {
 				root,
-				updateRoot: true,
+				// Do not push LLM input/output to trace or wrapper span when joining an external trace.
+				updateRoot: !isDistributedTracing,
 			};
 
 			if (langfuseConfig.environment) {
