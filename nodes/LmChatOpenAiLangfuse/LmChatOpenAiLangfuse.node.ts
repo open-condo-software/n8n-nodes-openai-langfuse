@@ -735,8 +735,6 @@ export class LmChatOpenAiLangfuse implements INodeType {
 
 			const generationName = modelName;
 
-			// Nest LLM generations under the external parent span when provided.
-			// Use the model name for the wrapper span, not the workflow trace name.
 			let root: LangfuseTraceClient | LangfuseSpanClient = trace;
 			if (parentSpanId) {
 				root = langfuseClient.span({
