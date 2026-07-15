@@ -762,7 +762,12 @@ export class LmChatOpenAiLangfuse implements INodeType {
 				callbackOptions.environment = langfuseConfig.environment as string;
 			}
 
-			const langfuseCallback = new CustomLangfuseHandler(callbackOptions, generationName, traceName);
+			const langfuseCallback = new CustomLangfuseHandler(
+				callbackOptions,
+				generationName,
+				traceName,
+				traceOptions.tags ?? [],
+			);
 
 			callbacks.push(langfuseCallback);
 		}

@@ -2,7 +2,17 @@ import { type AnonymousLlmMessage, CallbackHandler, type LlmMessage } from 'lang
 import type { Serialized } from '@langchain/core/load/serializable';
 import { BaseMessage, type MessageContent } from '@langchain/core/messages'
 import { type LLMResult } from '@langchain/core/outputs'
-import { resolveAssistantOutput } from './resolveAssistantOutput'
+import {
+	buildStreamingLangfuseMetadata,
+	isEmptyContent,
+	mergeStreamingTag,
+	resolveAssistantOutput,
+} from './resolveAssistantOutput'
+
+type StreamRunStats = {
+	tokenEvents: number;
+	aggregatedText: string;
+};
 
 /**
  * Custom Langfuse CallbackHandler that overrides observation names
@@ -13,16 +23,18 @@ export class CustomLangfuseHandler extends CallbackHandler {
 	private customName: string;
 	private originalTraceName?: string;
 	private environment?: string;
-	private streamedTextByRunId = new Map<string, string>();
+	private baseTags: string[];
+	private streamStatsByRunId = new Map<string, StreamRunStats>();
 
 	// Ensure LangChain waits for async Langfuse updates (critical for streaming)
 	awaitHandlers = true;
 
-	constructor(params: any, customName: string, traceName?: string) {
+	constructor(params: any, customName: string, traceName?: string, baseTags: string[] = []) {
 		super(params);
 		this.customName = customName;
 		this.originalTraceName = traceName;
 		this.environment = params?.environment;
+		this.baseTags = baseTags;
 
 		(this as any).extractChatMessageContent = (message: BaseMessage): LlmMessage | AnonymousLlmMessage | MessageContent => {
 			if (message.getType() === 'ai') {
@@ -81,11 +93,16 @@ export class CustomLangfuseHandler extends CallbackHandler {
 		tags?: string[],
 		fields?: any,
 	): Promise<void> {
-		if (runId && token) {
-			this.streamedTextByRunId.set(
-				runId,
-				`${this.streamedTextByRunId.get(runId) ?? ''}${token}`,
-			);
+		if (runId) {
+			const stats = this.streamStatsByRunId.get(runId) ?? {
+				tokenEvents: 0,
+				aggregatedText: '',
+			};
+			stats.tokenEvents += 1;
+			if (token) {
+				stats.aggregatedText += token;
+			}
+			this.streamStatsByRunId.set(runId, stats);
 		}
 		return super.handleLLMNewToken(token, idx, runId, parentRunId, tags, fields);
 	}
@@ -221,23 +238,33 @@ export class CustomLangfuseHandler extends CallbackHandler {
 	}
 
 	async handleLLMEnd(output: LLMResult, runId: string, parentRunId?: string | undefined): Promise<void> {
-		const streamedText = this.streamedTextByRunId.get(runId);
-		this.streamedTextByRunId.delete(runId);
+		const streamStats = this.streamStatsByRunId.get(runId);
+		this.streamStatsByRunId.delete(runId);
+		const streamedText = streamStats?.aggregatedText;
+		const wasStreaming = Boolean(streamStats && streamStats.tokenEvents > 0);
+
+		let resolvedAssistantText: string | undefined;
+		let textAggregated = false;
 
 		// Normalize streaming / Responses API generations so Langfuse gets real text
 		// instead of null when message.content is [] but the answer lives in
-		// generation.text, response_metadata.output_text, or streamed tokens.
+		// generation.text, response_metadata.output, or streamed tokens.
 		const normalizedGenerations = (output.generations ?? []).map((row) =>
 			row.map((generation) => {
 				const gen = generation as { text?: string; message?: BaseMessage };
 				if (!gen?.message) return generation;
 
+				const contentWasEmpty = isEmptyContent(gen.message.content);
 				const resolved = resolveAssistantOutput(
 					gen.message,
 					(gen.text && gen.text.trim()) || streamedText || undefined,
 				);
 
 				if (typeof resolved.content === 'string' && resolved.content.length > 0) {
+					resolvedAssistantText = resolved.content;
+					if (contentWasEmpty || Boolean(streamedText?.trim())) {
+						textAggregated = true;
+					}
 					(gen.message as { content: MessageContent }).content = resolved.content;
 					if (!gen.text || !gen.text.trim()) {
 						gen.text = resolved.content;
@@ -285,6 +312,58 @@ export class CustomLangfuseHandler extends CallbackHandler {
 				: output.llmOutput,
 		};
 
-		return await super.handleLLMEnd(normalizedOutput, runId, parentRunId);
+		await super.handleLLMEnd(normalizedOutput, runId, parentRunId);
+
+		const streamingMetadata = wasStreaming
+			? buildStreamingLangfuseMetadata({
+					tokenEvents: streamStats!.tokenEvents,
+					textAggregated,
+				})
+			: undefined;
+
+		if (streamingMetadata) {
+			this.langfuse._updateGeneration({
+				id: runId,
+				traceId: this.traceId,
+				metadata: streamingMetadata,
+			});
+		}
+
+		// Agent wraps the LLM, so parentRunId is set and langfuse-langchain's
+		// updateTrace skips root output. Push the resolved answer onto the root
+		// trace/span explicitly when updateRoot is enabled.
+		if (this.rootProvided && this.updateRoot && this.traceId) {
+			const streamingTagUpdate = streamingMetadata
+				? {
+						metadata: streamingMetadata,
+						tags: mergeStreamingTag(this.baseTags),
+					}
+				: {};
+
+			if ((this as any).rootObservationId) {
+				this.langfuse._updateSpan({
+					id: (this as any).rootObservationId,
+					traceId: this.traceId,
+					...(resolvedAssistantText
+						? { output: { role: 'assistant', content: resolvedAssistantText } }
+						: {}),
+					...(streamingMetadata ? { metadata: streamingMetadata } : {}),
+				});
+				if (Object.keys(streamingTagUpdate).length > 0) {
+					this.langfuse.trace({
+						id: this.traceId,
+						...streamingTagUpdate,
+					});
+				}
+			} else {
+				this.langfuse.trace({
+					id: this.traceId,
+					...(resolvedAssistantText
+						? { output: { role: 'assistant', content: resolvedAssistantText } }
+						: {}),
+					...streamingTagUpdate,
+				});
+			}
+		}
 	}
 }
