@@ -2,6 +2,7 @@ import { type AnonymousLlmMessage, CallbackHandler, type LlmMessage } from 'lang
 import type { Serialized } from '@langchain/core/load/serializable';
 import { BaseMessage, type MessageContent } from '@langchain/core/messages'
 import { type LLMResult } from '@langchain/core/outputs'
+import { resolveAssistantOutput } from './resolveAssistantOutput'
 
 /**
  * Custom Langfuse CallbackHandler that overrides observation names
@@ -12,6 +13,10 @@ export class CustomLangfuseHandler extends CallbackHandler {
 	private customName: string;
 	private originalTraceName?: string;
 	private environment?: string;
+	private streamedTextByRunId = new Map<string, string>();
+
+	// Ensure LangChain waits for async Langfuse updates (critical for streaming)
+	awaitHandlers = true;
 
 	constructor(params: any, customName: string, traceName?: string) {
 		super(params);
@@ -20,6 +25,10 @@ export class CustomLangfuseHandler extends CallbackHandler {
 		this.environment = params?.environment;
 
 		(this as any).extractChatMessageContent = (message: BaseMessage): LlmMessage | AnonymousLlmMessage | MessageContent => {
+			if (message.getType() === 'ai') {
+				return resolveAssistantOutput(message) as LlmMessage;
+			}
+
 			let response = undefined;
 
 			if (message.getType() === "human") {
@@ -29,23 +38,6 @@ export class CustomLangfuseHandler extends CallbackHandler {
 					content: message.content,
 					role: "human",
 				};
-			} else if (message.getType() === "ai") {
-				response = { content: message.content, role: "assistant" };
-
-				if (
-					"tool_calls" in message &&
-					Array.isArray(message.tool_calls) &&
-					(message.tool_calls?.length ?? 0) > 0
-				) {
-					(response as any)["tool_calls"] = message["tool_calls"];
-				}
-				if (
-					"additional_kwargs" in message &&
-					"tool_calls" in message["additional_kwargs"]
-				) {
-					(response as any)["tool_calls"] =
-						message["additional_kwargs"]["tool_calls"];
-				}
 			} else if (message.getType() === "system") {
 				response = { content: message.content, role: "system" };
 			} else if (message.getType() === "function") {
@@ -69,14 +61,6 @@ export class CustomLangfuseHandler extends CallbackHandler {
 				};
 			}
 
-			// NOTE: Fix output display in the interface
-			const responseContent = response?.content
-			const responseContentIsEmptyArray = responseContent && Array.isArray(responseContent) && responseContent.length < 1
-			if (responseContentIsEmptyArray) {
-				(response as any)._content = responseContent
-				delete (response as any)['content']
-			}
-
 			if (
 				(message.additional_kwargs.function_call ||
 					message.additional_kwargs.tool_calls) &&
@@ -87,6 +71,23 @@ export class CustomLangfuseHandler extends CallbackHandler {
 
 			return response;
 		};
+	}
+
+	async handleLLMNewToken(
+		token: string,
+		idx: any,
+		runId: string,
+		parentRunId?: string,
+		tags?: string[],
+		fields?: any,
+	): Promise<void> {
+		if (runId && token) {
+			this.streamedTextByRunId.set(
+				runId,
+				`${this.streamedTextByRunId.get(runId) ?? ''}${token}`,
+			);
+		}
+		return super.handleLLMNewToken(token, idx, runId, parentRunId, tags, fields);
 	}
 
 	// Override handleChatModelStart to use custom name
@@ -100,7 +101,6 @@ export class CustomLangfuseHandler extends CallbackHandler {
 		metadata?: Record<string, unknown>,
 		name?: string,
 	): Promise<void> {
-		// Use our custom name instead of the default
 		return super.handleChatModelStart(
 			llm,
 			messages,
@@ -109,7 +109,7 @@ export class CustomLangfuseHandler extends CallbackHandler {
 			extraParams,
 			tags,
 			metadata,
-			this.customName, // Override name
+			this.customName,
 		);
 	}
 
@@ -124,7 +124,6 @@ export class CustomLangfuseHandler extends CallbackHandler {
 		metadata?: Record<string, unknown>,
 		name?: string,
 	): Promise<void> {
-		// Use our custom name instead of the default
 		return super.handleLLMStart(
 			llm,
 			prompts,
@@ -133,7 +132,7 @@ export class CustomLangfuseHandler extends CallbackHandler {
 			extraParams,
 			tags,
 			metadata,
-			this.customName, // Override name
+			this.customName,
 		);
 	}
 
@@ -148,7 +147,6 @@ export class CustomLangfuseHandler extends CallbackHandler {
 		metadata?: Record<string, unknown>,
 		name?: string,
 	): Promise<void> {
-		// Use our custom name instead of the default
 		return super.handleGenerationStart(
 			llm,
 			messages,
@@ -157,7 +155,7 @@ export class CustomLangfuseHandler extends CallbackHandler {
 			extraParams,
 			tags,
 			metadata,
-			this.customName, // Override name
+			this.customName,
 		);
 	}
 
@@ -170,12 +168,8 @@ export class CustomLangfuseHandler extends CallbackHandler {
 		metadata?: Record<string, unknown>,
 		input?: any,
 	): void {
-		// When at the root level (no parent) and we have an original trace name,
-		// manually handle the trace update to preserve the name while still updating other properties
 		if (this.rootProvided && this.updateRoot && !parentRunId && this.originalTraceName) {
-			// First, ensure the trace exists and top-level ID is set
 			if (!this.traceId) {
-				// Create trace with original name
 				const params = {
 					name: this.originalTraceName,
 					metadata: this.joinTagsAndMetaData(tags, metadata, this.metadata),
@@ -195,9 +189,7 @@ export class CustomLangfuseHandler extends CallbackHandler {
 				return;
 			}
 
-			// Update the root observation/trace without changing the name
 			const updateParams = {
-				// Explicitly omit 'name' to preserve original trace name
 				metadata: this.joinTagsAndMetaData(tags, metadata, this.metadata),
 				userId: this.userId,
 				version: this.version,
@@ -208,14 +200,12 @@ export class CustomLangfuseHandler extends CallbackHandler {
 			};
 
 			if ((this as any).rootObservationId) {
-				// Update span without name
 				this.langfuse._updateSpan({
 					id: (this as any).rootObservationId,
 					traceId: this.traceId,
 					...updateParams,
 				});
 			} else {
-				// Update trace without name
 				this.langfuse.trace({
 					id: this.traceId,
 					...updateParams,
@@ -226,35 +216,44 @@ export class CustomLangfuseHandler extends CallbackHandler {
 			return;
 		}
 
-		// For all other cases (has parent, no original name, etc.), use default behavior
-		// but still prefer our custom names where appropriate
 		const nameToUse = this.originalTraceName || runName;
 		super.generateTrace(nameToUse, runId, parentRunId, tags, metadata, input);
 	}
 
 	async handleLLMEnd(output: LLMResult, runId: string, parentRunId?: string | undefined): Promise<void> {
-		// CRITICAL: Log the full output structure to understand what we're getting
-		console.log('[Langfuse Debug] Full output object keys:', Object.keys(output));
-		const firstGen = output.generations?.[0]?.[0];
-		if (firstGen) {
-			console.log('[Langfuse Debug] First generation keys:', Object.keys(firstGen));
-			console.log('[Langfuse Debug] First generation full:', JSON.stringify(firstGen, null, 2));
-		}
-		if (output.llmOutput) {
-			console.log('[Langfuse Debug] Output.llmOutput keys:', Object.keys(output.llmOutput));
-			console.log('[Langfuse Debug] Output.llmOutput full:', JSON.stringify(output.llmOutput, null, 2));
-		}
+		const streamedText = this.streamedTextByRunId.get(runId);
+		this.streamedTextByRunId.delete(runId);
 
-		// Extract the response before calling the handler
-		const lastResponse =
-			output.generations?.[output.generations.length - 1]?.[
-			output.generations[output.generations.length - 1].length - 1
-				] as any;
+		// Normalize streaming / Responses API generations so Langfuse gets real text
+		// instead of null when message.content is [] but the answer lives in
+		// generation.text, response_metadata.output_text, or streamed tokens.
+		const normalizedGenerations = (output.generations ?? []).map((row) =>
+			row.map((generation) => {
+				const gen = generation as { text?: string; message?: BaseMessage };
+				if (!gen?.message) return generation;
 
-		// Try to get token usage from multiple sources
+				const resolved = resolveAssistantOutput(
+					gen.message,
+					(gen.text && gen.text.trim()) || streamedText || undefined,
+				);
+
+				if (typeof resolved.content === 'string' && resolved.content.length > 0) {
+					(gen.message as { content: MessageContent }).content = resolved.content;
+					if (!gen.text || !gen.text.trim()) {
+						gen.text = resolved.content;
+					}
+				}
+
+				return generation;
+			}),
+		);
+
+		// Token usage fallbacks (tool calls / message metadata)
 		let tokenUsage = output?.llmOutput?.tokenUsage;
+		const lastResponse = normalizedGenerations?.[normalizedGenerations.length - 1]?.[
+			normalizedGenerations[normalizedGenerations.length - 1].length - 1
+		] as { message?: { usage_metadata?: Record<string, number> } } | undefined;
 
-		// Fallback 1: estimatedTokenUsage (common with tool calls)
 		if (!tokenUsage && output?.llmOutput?.estimatedTokenUsage) {
 			tokenUsage = {
 				promptTokens: output.llmOutput.estimatedTokenUsage.promptTokens,
@@ -263,7 +262,6 @@ export class CustomLangfuseHandler extends CallbackHandler {
 			};
 		}
 
-		// Fallback 2: usage_metadata (from message)
 		if (!tokenUsage) {
 			const usageMetadata = lastResponse?.message?.usage_metadata;
 			if (usageMetadata) {
@@ -276,34 +274,17 @@ export class CustomLangfuseHandler extends CallbackHandler {
 			}
 		}
 
-		// Ensure tokenUsage exists in llmOutput
-		if (tokenUsage) {
-			output = {
-				...output,
-				llmOutput: {
-					...output.llmOutput,
-					tokenUsage,
-				},
-			};
-		}
+		const normalizedOutput: LLMResult = {
+			...output,
+			generations: normalizedGenerations,
+			llmOutput: tokenUsage
+				? {
+						...output.llmOutput,
+						tokenUsage,
+					}
+				: output.llmOutput,
+		};
 
-		const messageParsed = lastResponse?.message?.parsed
-		const messageContent = lastResponse?.message?.content
-		const text = lastResponse?.text
-		const messageToolCalls = lastResponse?.message?.tool_calls
-
-		// CRITICAL: Log full response structure for debugging
-		console.log('[Langfuse Debug] Full lastResponse:', JSON.stringify({
-			text,
-			messageType: lastResponse?.message?.constructor?.name,
-			messageContent,
-			messageAdditionalKwargs: lastResponse?.message?.additional_kwargs,
-			messageParsed,
-			messageToolCalls,
-			messageKeys: lastResponse?.message ? Object.keys(lastResponse.message) : [],
-		}, null, 2));
-
-		// Call the original handler
-		return await super.handleLLMEnd(output, runId, parentRunId)
+		return await super.handleLLMEnd(normalizedOutput, runId, parentRunId);
 	}
 }
