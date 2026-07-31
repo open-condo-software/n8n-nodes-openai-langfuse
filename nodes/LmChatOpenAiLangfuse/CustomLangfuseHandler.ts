@@ -3,6 +3,10 @@ import type { Serialized } from '@langchain/core/load/serializable';
 import { BaseMessage, type MessageContent } from '@langchain/core/messages'
 import { type LLMResult } from '@langchain/core/outputs'
 import {
+	appendAvailableToolsToInput,
+	extractBoundToolsFromExtraParams,
+} from './extractBoundTools'
+import {
 	buildStreamingLangfuseMetadata,
 	isEmptyContent,
 	mergeStreamingTag,
@@ -107,8 +111,38 @@ export class CustomLangfuseHandler extends CallbackHandler {
 		return super.handleLLMNewToken(token, idx, runId, parentRunId, tags, fields);
 	}
 
-	// Override handleChatModelStart to use custom name
-	async handleChatModelStart(
+	/**
+	 * Enrich generation input with bound tools from invocation_params.
+	 * langfuse-langchain JS only logs messages; Python SDK also appends tools.
+	 * Without this, traces look like "system + user only" and hide why the model
+	 * could/couldn't call tools.
+	 */
+	private enrichGenerationInputAndMetadata (
+		messages: unknown[],
+		extraParams?: Record<string, unknown>,
+		metadata?: Record<string, unknown>,
+	): { input: unknown[]; metadata?: Record<string, unknown> } {
+		const boundTools = extractBoundToolsFromExtraParams(extraParams)
+		const input = appendAvailableToolsToInput(messages, boundTools)
+
+		if (!boundTools) {
+			return { input, metadata }
+		}
+
+		return {
+			input,
+			metadata: {
+				...metadata,
+				tools_count: boundTools.toolsCount,
+				tool_choice: boundTools.toolChoice ?? 'auto',
+				// Compact list for filters in Langfuse UI
+				tool_names: boundTools.tools.map((tool) => tool.name),
+			},
+		}
+	}
+
+	// Override handleChatModelStart to use custom name + log bound tools
+	async handleChatModelStart (
 		llm: Serialized,
 		messages: BaseMessage[][],
 		runId: string,
@@ -118,20 +152,29 @@ export class CustomLangfuseHandler extends CallbackHandler {
 		metadata?: Record<string, unknown>,
 		name?: string,
 	): Promise<void> {
-		return super.handleChatModelStart(
+		const prompts = messages.flatMap((row) =>
+			row.map((message) => (this as any).extractChatMessageContent(message)),
+		)
+		const { input, metadata: enrichedMetadata } = this.enrichGenerationInputAndMetadata(
+			prompts,
+			extraParams,
+			metadata,
+		)
+
+		return this.handleGenerationStart(
 			llm,
-			messages,
+			input,
 			runId,
 			parentRunId,
 			extraParams,
 			tags,
-			metadata,
+			enrichedMetadata,
 			this.customName,
-		);
+		)
 	}
 
-	// Override handleLLMStart to use custom name
-	async handleLLMStart(
+	// Override handleLLMStart to use custom name + log bound tools when present
+	async handleLLMStart (
 		llm: Serialized,
 		prompts: string[],
 		runId: string,
@@ -141,20 +184,26 @@ export class CustomLangfuseHandler extends CallbackHandler {
 		metadata?: Record<string, unknown>,
 		name?: string,
 	): Promise<void> {
-		return super.handleLLMStart(
-			llm,
+		const { input, metadata: enrichedMetadata } = this.enrichGenerationInputAndMetadata(
 			prompts,
+			extraParams,
+			metadata,
+		)
+
+		return this.handleGenerationStart(
+			llm,
+			input,
 			runId,
 			parentRunId,
 			extraParams,
 			tags,
-			metadata,
+			enrichedMetadata,
 			this.customName,
-		);
+		)
 	}
 
 	// Override handleGenerationStart to use custom name
-	async handleGenerationStart(
+	async handleGenerationStart (
 		llm: Serialized,
 		messages: any[],
 		runId: string,
@@ -173,7 +222,7 @@ export class CustomLangfuseHandler extends CallbackHandler {
 			tags,
 			metadata,
 			this.customName,
-		);
+		)
 	}
 
 	// Override generateTrace to preserve original trace name
